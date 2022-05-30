@@ -1,0 +1,161 @@
+---
+title: "Future Predicted Value"
+author: "Xuhao Dong"
+date: "2021-12-05" # fix the date!
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=F)
+```
+
+## Future Predicted Value
+
+Future predicted value is the estimate of how much someone will spend in the future with a 
+company. In this report we calculate FPV for the Wedge in 2015 using data from before that 
+year. Our report has the following sections: 
+
+1. Variable selection: In this section we describe the variables that we use in the model.
+1. Model formulation: This section describes the model itself. 
+1. Estimates of model accuracy: We run a quick analysis of model accuracy in the final section.
+
+```{r includes}
+# Feel free to adjust to the ones you need.
+library(tidyverse)
+library(scales)
+library(reshape2)
+library(DBI)
+library(broom)
+library(greybox)
+```
+
+
+```{r db-hookup}
+# Change to your path
+path.to.db <- paste0("/Users/steviodong/Desktop/Applied Data Analytics/TWP/final/")
+
+# Creating the connection to the DB. Similar to 
+# a cursor. 
+con <- dbConnect(RSQLite::SQLite(),
+                 dbname=paste0(path.to.db,"thewedge_part3.db"))
+
+# Listing the tables
+dbListTables(con) # uncomment to see table names
+
+# And creating connections to the two tables. 
+owner.ym <- tbl(con, "owner_sales_by_yearmonth")
+
+```
+
+### Variable Selection
+
+```{r variable-selection}
+# Use this space to create the data set you'll feed into `lm` I've made a simple one for you.
+# I've done this in two different ways so you can see a couple of techniques.
+# First way uses "pivot_wider"
+md <- owner.ym %>% 
+  filter(card_no != "3",
+         between(year,2013,2015)) %>% 
+  group_by(card_no,year) %>%
+  summarize(sales=sum(sales,na.rm=T)) %>% 
+  ungroup() %>% 
+  collect 
+
+md <- md %>% 
+  pivot_wider(id_cols=c("card_no"),
+              names_from=year,
+              names_prefix="sales_",
+              values_from=sales)
+
+# Second builds a data set up from the ground
+md2 <- owner.ym %>% 
+  filter(card_no != "3",
+         between(year,2013,2015)) %>% 
+  distinct(card_no) %>% 
+  collect 
+
+# Now start bringing in our covariates. 
+md2 <- left_join(md2,
+                owner.ym %>% 
+                  filter(year==2013) %>% 
+                  group_by(card_no) %>% 
+                  summarize(sales_2013 = sum(sales)) %>% 
+                  collect,
+                by="card_no") 
+
+md2 <- left_join(md2,
+                owner.ym %>% 
+                  filter(year==2014) %>% 
+                  group_by(card_no) %>% 
+                  summarize(sales_2014 = sum(sales)) %>% 
+                  collect,
+                by="card_no") 
+
+md2 <- left_join(md2,
+                owner.ym %>% 
+                  filter(year==2015) %>% 
+                  group_by(card_no) %>% 
+                  summarize(sales_2015 = sum(sales)) %>% 
+                  collect,
+                by="card_no") 
+
+
+```
+```{r split data}
+#This takes number of rows and divides by two for a 10/90 split
+bound <- floor((nrow(md)*0.1))
+
+#This randomly shuffles the entire dataset
+md <- md[sample(nrow(md)),]
+
+#Create a new dataframe called md.train that contains record #1 to "bound"
+md.train <- md[1:bound, ]
+
+#Create a new dataframe called md.test that contains record "bound" to the end of the dataframe
+md.test <- md[(bound+1):nrow(md), ]
+
+```
+
+
+
+I first created a bound and take the number of row and split into 10/90, then shuffle the dataset and put them into two new dataframe md.train and md.test.
+
+
+### Model Formulation
+
+```{r modeling}
+# A simple example model
+lm.1 <- lm(sales_2015 ~ sales_2013 + sales_2014,
+           data= md.train,
+           subset=sales_2015 <= 15000)
+plot(lm.1)
+# Of course, you'd never just dump a summary table into a document!
+print(tidy(lm.1))
+summary(lm.1)
+```
+Q2:Do a short write up of your model. What terms are significant? What's the R^2? What's the 
+residual standard error and how would you interpret it?
+
+The sales of 2014 is very significant to the model, an adjusted r-squared of 77.60% reveals that 77.60% of the data fit the regression model. Residual Standard Error is measure of the quality of a linear regression fit. In our example, the actual sales in 2015 can deviate from the true regression line by approximately 1491 dollars, on average. 
+ 
+
+
+### Model Accuracy
+
+```{r model-accuracy}
+#Place the prediction variable back in the test dataset
+md.test$pred <- predict(lm.1,newdata = md.test)
+
+MAPE(md.test$sales_2015,md.test$pred)
+
+mean(abs((md.test$sales_2015-md.test$pred)/md.test$sales_2015),na.rm=TRUE)*100
+
+```
+
+<!--
+
+As the readme indicates, do a quick check of model accuracy on a holdout sample that
+isn't use for fitting.
+
+-->
+

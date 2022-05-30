@@ -1,0 +1,6 @@
+set.seed(34567)
+trainIndex <- createDataPartition(md, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+Train <- md[ trainIndex,]
+Valid <- dmd[-trainIndex,]
