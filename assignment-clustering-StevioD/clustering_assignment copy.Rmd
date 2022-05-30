@@ -1,0 +1,179 @@
+---
+title: "Survey Clustering"
+author: "Jackson Joyner"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, echo=F, warning=F, message=F}
+library(cluster)
+library(tidyverse)
+library(pvclust)
+library(knitr)
+
+```
+
+## Clustering
+
+This assignment asks you to cluster the Washington survey data explored in the 
+$\chi^2$ and ANOVA assignments. A full description of that data is in those 
+markdown files. I've included the appendix data description at the bottom. Since
+those assignments require EDA, you _don't_ have to do an EDA in this assignment.
+
+```{r}
+d<- readr::read_tsv("washington_survey_data.txt")
+```
+
+## Demo Clustering
+
+In this section, perform a cluster analysis using the non-value fields: 
+
+* age
+* gender
+* engagement
+* account.age
+
+Choose a number of clusters and use `pam` to cluster the data using these fields. Briefly 
+describe the clusters. How evenly do your clusters align with the regions?  
+```{r data-input}
+#names(d) <- c("ID", "Age", "Gender", "Engagement",
+              # "Mem.Edu", "Zip", "Channel", "Progressivism",
+              # "Harm", "Fair", "In.Group", "Authority",
+              # "Purity","Account_Age", "Region","Public_Sector",
+              # "Sustainability","Localism", "Pub_Priv", "Experience",
+              # "Underpaid", "Focal_Value","Local_Support")
+
+
+data.for.clust <- d %>% select(age,gender,engagement,account.age)
+
+clust <- 
+  pam(x=data.for.clust,
+    k=3)
+#summary(clust)
+#table(clust$clustering)
+d<- d %>% mutate(member= clust$clustering)
+
+a <- d %>% count(member,region)
+kable(a)
+
+```
+Each cluster seems to have a majority of their people live in the western Washington Metro area. The next most popular area to live in is Thurston. This is constant across all clusters. Cluster 2 has the greatest population of 950 and Cluster 3 has a population of 674. 
+
+
+
+## Values Clustering
+
+Similarly to the previous section, perform a cluster analysis, this time on the
+values questions: 
+
+* fair
+* harm
+* in.group
+* authority
+* purity
+* public.sector
+* sustainability
+* localism
+
+After you've built your clusters, report the following information on each 
+cluster: 
+
+1. Predominant region
+1. Average age and account age
+1. Most common focal value
+1. Mean results on the questions of `pub.greater.priv`, `experience.more.important`,
+and `teachers.underpaid`
+
+```{r}
+data.for.clust1 <- d %>% select(fair,harm,in.group,authority,purity,public.sector,sustainability,localism)
+
+clust <- 
+  pam(x=data.for.clust1,
+    k=5)
+#summary(clust)
+#table(clust$clustering)
+d1 <- d %>% mutate(membership = clust$clustering)
+
+x <- d1 %>%  group_by(membership) %>% summarize("Age" =mean(age), "Account_Age" = mean(account.age), "Priv" =mean(pub.greater.priv), "Experience" =mean(experience.more.important), Underpaid = mean(teachers.underpaid))
+kable(x)
+
+y<- d1 %>% count(membership,region)
+kable(y)
+   
+z<- d1 %>% count(membership,main.focal.value)
+kable(z)
+                                     
+```
+For this section, I wondered if five different clusters would be better than three, so I clustered the data into five groups. In cluster 1, We see a mean customer age of 43.65, an average account age of 12.24 years, who's most predominant region is the W WA Metro area. This clusters most common focal value is Education. They also scored a mean score of 3.08 on greater public priv, a mean score of 4.0 on experience and a mean score of 4.53 on if teachers are underpaid. 
+
+Cluster 2 has a mean age of 49.26, mean account age of 14.22 years, and are predominately located in the W WA Metro. Their most common focal value is the environment. This clusters mean score for greater public priv was 3.37, their mean score for experience was 3.87 and their mean score for underpaid teachers was 5.31. 
+
+Cluster 3 had a mean age of 53, a mean account age of 14.91 years, and are also located mostly in the W WA Metro with Thurston being a close second (254 and 215 respectively). These people are mostly interested in Education, Health, and Hunger and Poverty (120, 105, 107). They rank third in greater public priv with a mean score of 3.24, 4th in experience with a mean score of 3.97, and second in underpaid teachers with a mean score of 5.04.
+
+Cluster 4 is our oldest group, with an average age of 55.07, they have held their accounts on average 13.1 years, and primarily live in the W WA Metro and Thurston area (152 and 140). Their primary focal interest is health with 78 votes, and education with 76. They have a mean greater public priv score of 3.29, a mean score for experience of 4.14, and a mean underpaid teacher score of 4.91.
+
+Cluster 5 has mean age of 52.04, mean account age of 14.12, and primarily live in W WA Metro and Thurston (65 and 61). This cluster cares about health and law enforcement with 50 and 45 votes each. They have the lowest score of greater public priv with an average score of 2.58. This cluster values experience the most with and average score of 4.18 and they scored on average the lowest for underpaid teachers with mean score of 4.05. 
+
+
+
+
+# Appendix: Full Data Description
+A financial institution in Washington has become concerned that their current membership 
+base is not well-aligned with their corporate values. Through that concern they 
+realized that don't actually understand their membership's values very well. They 
+surveyed 2,421 members to shed light on the issue. 
+
+The heart of the survey was the Moral Foundations Theory of Jonathan Haidt. Members 
+were surveyed on the Moral Foundations Questionnaire, which you should take so you 
+understand the test. Survey respondents were scored on the five foundations as well 
+as a single-number summary, Progressivism. 
+
+The financial institution values Localism, Sustainability, and Education. These aspects 
+of member's values were assessed in the survey as well. Localism and Sustainability used
+validated scales and thus can be summarized via a single score, where higher values indicate
+greater support for the values. Education is summarized by the following three questions, 
+which we do not have evidence can be combined into a single score:
+
+* In general, public schools provide a better education than private schools.
+* Public school teachers are underpaid.
+* Experience is more important than education in determining success in life.
+These questions were evaluated on a 1 to 6 scale where 1 indicated "Strongly Disagree" and 
+6 indicated "Strongly Agree". 
+
+Finally, we have information on the member that can be used to understand variation 
+in their values. 
+
+The data consists of the following columns:
+
+* ID: a unique identifier for the survey respondent.
+* age: the age of the respondent.
+* gender: gender was evaluated with robust scale and collapsed into male/female/other for 
+  those whose gender identity was not male or female.
+* engagement: three categories of engagement with the financial institution.
+* mem.edu: the self-reported education level of the member with the following scale:
+* zip: the member zip code. 
+* channel: how the member joined the financial institution. Options are "Loan" if they joined 
+  via an auto loan, "Branch" if they joined at a branch and other for online or unknown. 
+* progressivism/harm/fair/in.group/authority/purity: The MFQ results.
+* account.age: the age of the member's account, in years. 
+* region: The region of Washington the member lives in. May be easier to work with than zip.
+* public.sector: has the person ever been a public employee?
+* sustainability/localism: Scores on the validated scales. Higher values indicate greater
+  support for the value.
+* pub.greater.priv/experience.more.important/teachers.underpaid: The responses to the 
+  education questions above. 
+* main.focal.value: Respondents were asked, "Below is a list of broad areas to which people 
+  often dedicate their volunteer or philanthropic efforts. From this list, please select the 
+  most important to you. If an area of particular importance is missing, please let us know 
+  about it in the space for 'other.'" This column holds the respondents' answer to that question.
+* support.of.focal.value: Respondents were given an opportunity to indicate how they 
+  supported their focal value. Those responses were collapsed into a single score, where 
+  a higher value indicates more support.
+
+
+
+
+
