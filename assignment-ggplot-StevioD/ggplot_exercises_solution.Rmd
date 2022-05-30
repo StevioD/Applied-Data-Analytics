@@ -1,0 +1,202 @@
+---
+title: "GGPlot Exercises"
+author: "John Chandler & Jordan McNea"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+library(RColorBrewer)
+```
+
+## Introduction
+
+This document takes us through some common charting challenges with `ggplot`. Much of this
+code is reinforced or introduced in the "Data Visualization" chapter of _Algorithms for Data Science_.
+
+When you submit your work, please submit both your RMD file and the knitted HTML file. Save the 
+data for this assignment in the same folder as the RMD and the reads should work. 
+
+```{r Read in data}
+
+gd <- read_tsv("grocery_data.txt")
+month.summary <- read_tsv("month_summary.txt")
+dept.summary <- read_tsv("dept_summary.txt")
+mosaic.data <- read_tsv("counts_for_mosaic.txt")
+
+```
+
+## Problem 1 - Sales by month by department
+
+Things to add to this chart: 
+
+* Divide sales by 1000
+* Add some transparency to the points with `alpha`
+* Add axis labels using `labs`
+* Center the title, rather than it being left-aligned
+
+```{r prob-1}
+
+gd <- gd %>%
+    mutate(month = as.factor(month),
+          (sales = ownerSales / 1000),
+           departmentName = reorder(departmentName,ownerSales,mean))
+head(gd,10)
+
+# Here's a basic one:
+plot <- ggplot(gd, aes(x=(sales = ownerSales / 1000),y=departmentName)) + 
+  geom_point(alpha = 1/10) 
+
+plot <- plot + labs(x = "Owner Sales", y = "Department Name")
+
+plot <- plot +
+  ggtitle("Sales by month by department") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+print(plot)
+```
+
+## Problem 2 - add median lines
+
+Add these lines to the plot using geom_segment.
+
+* That function/layer takes four values
+* x, xend, y, and y.end. You can get y.values with
+* something like `as.numeric(departmentName)-0.5` (or plus)
+* The x's should be the median values
+
+
+```{r median-lines}
+
+medians <- gd %>% 
+  group_by(departmentName) %>%
+  summarise(med.val = median(ownerSales/1000))
+
+medians
+
+ggplot(gd, aes(x=ownerSales/1000,y=departmentName)) + 
+  geom_point() +
+  geom_segment(aes(x = med.val, y = as.numeric(departmentName)-0.5, xend = med.val, yend = as.numeric(departmentName)+0.5, colour = "segment"), data = medians)
+```
+
+## Problem 3 - line chart plotting the density
+
+Things to add:
+
+* a theme (could use `theme_minimal`) 
+* label each line using `geom_text`
+* Each label should read "Bandwidth = x"  
+* Make sure labels don't overlap the line (use `check_overlap=T` within `geom_text` to accomplish this)
+* Each label should match the color of the line its labeling
+
+```{r prob-3}
+
+p3.size <- 4
+p3.cols <- c("gray15","gray40","gray75")
+p <- ggplot(gd,
+            aes(x=ownerSales/1000)) + 
+  ylab("Density") + 
+  geom_line(stat="density",col=p3.cols[1],size=1.25,bw=1) + 
+  geom_line(stat="density",col=p3.cols[2],size=1.25,bw=5) + 
+  geom_line(stat="density",col=p3.cols[3],size=1.25,bw=25) + 
+  scale_x_continuous(label=dollar) + 
+  xlab("Monthly Sales (000)") + 
+  geom_text(aes(x=20,y=0.05),
+            label= 'Bandwidth = 1', 
+            size=p3.size, check_overlap = T, col=p3.cols[1]) + 
+  geom_text(aes(x=20.5,y=0.03),
+            label= 'Bandwidth = 5',
+            size=p3.size, check_overlap = T, col=p3.cols[2]) + 
+  geom_text(aes(x=75,y=0.009), 
+            label='Bandwidth = 25',
+            size=p3.size, check_overlap = T, col=p3.cols[3]) +
+  theme_minimal()
+
+print(p)
+
+```
+
+## Problem 4 - use `gd` to create a density plot of sales by department. 
+
+Things to add:
+
+* First, make a density plot of sales (using `geom_density`). 
+* Then facet that plot by department using `facet_wrap`
+* Change the x axis tick marks so they are easily readable
+
+```{r prob-4}
+
+den <- ggplot(gd, aes(ownerSales/1000, ..count..)) +
+  geom_density(adjust = 5) + 
+  ylab("Density") +
+  scale_x_continuous(label=dollar) + 
+  xlab("Monthly Sales (000)")
+
+den2 <- den + facet_wrap(vars(departmentName))
+
+den3 <- den2 + theme(axis.text.x = element_text(face="bold", color="#993333", 
+                           size=7, angle=45),
+          axis.text.y = element_text(face="bold", color="#993333", 
+                           size=7, angle=45))
+den3
+
+```
+
+## Problem 5 - violin plots! Use gd, build violin plots of ownerSales by department. 
+
+Things to add:
+
+* add quantile lines, use nice labels,
+* re-orient chart with departments on the y-axis 
+* add a vertical line for the overall mean and change its color
+* add an annotation to the mean line with the mean sales
+
+
+```{r prob-5}
+mean <- gd %>% 
+  pull(ownerSales) %>% 
+  mean() %>%
+  signif(6)
+
+v <- ggplot(gd, aes(ownerSales,departmentName)) +
+  xlab("Owner Sales")+
+  ylab("Department Name")+
+  geom_violin(scale='width',trim=FALSE) + 
+  geom_boxplot(width=0.1) +
+  geom_vline(xintercept=mean,size=1.5, color="red")+
+  geom_text(aes(x=mean, label=paste0("Mean\n",mean), y=1.9))
+
+v
+```
+
+
+## Problem 6 - Mosaic charts
+
+Things to add:
+
+* Using mosaic.table, create a mosaic plot
+* Color the mosaicplot using the default gray pallette. 
+
+
+```{r prob-6}
+
+mosaic.table <- mosaic.data %>% 
+  spread(Segment,count) %>% 
+  rename(Dept=DepartmentName) %>% 
+  arrange(Primary) %>% 
+  as.data.frame
+  
+head(mosaic.table,10)
+# Let's do some renaming
+row.names(mosaic.table) <- mosaic.table$Dept
+mosaic.table$Dept <- NULL
+
+rownames(mosaic.table)[rownames(mosaic.table)=="SUPPLEMENTS"] <- "SUPP."
+rownames(mosaic.table)[rownames(mosaic.table)=="REF GROCERY"] <- "REF GROC"
+rownames(mosaic.table)[rownames(mosaic.table)=="PACKAGED GROCERY"] <- "PKG GROC"
+
+mosaicplot(mosaic.table, color = TRUE, main = "Department Shopping Frequency")
+```
+
