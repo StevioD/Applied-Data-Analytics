@@ -1,0 +1,239 @@
+---
+title: "dplyr Assignment"
+author: "John Chandler"
+date: "10/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+library(tidyverse)
+library(DBI)
+library(scales)
+library(bigrquery)
+library(lubridate)
+library(dbplyr)
+library(lubridate)
+
+options(scipen = 20)
+
+```
+
+## `dplyr` Practice
+
+In this assignment we'll re-do the queries from task 3 of the Wedge in `dplyr`. If you have
+uploaded your Wedge data already, write your queries against those tables. 
+
+I recommend testing your query against a single one of your tables and then 
+using wildcard trick from GBQ Further down 
+I'll provide a reminder of how that that trick works in `dplyr`. 
+
+In the Wedge project we pulled sales, transactions, and items across a variety 
+of dimensions. In order to make this assignment a bit simpler, here 
+we only need to gather the sales information. Also, after writing up the solutions, 
+it occurs to me that this is a pretty ambitious assignment (particularly considering
+that you're just coming off a tiring Wedge project), so I'm leaving the code for part
+3, the hardest part, in the assignment. Consider it a Happy Halloween gift from 
+me to you. 
+
+I recommend using `lubridate` for date manipulation and I have added that library
+into the includes.
+
+In each section I ask you to record some observations about the plots that are made.
+
+## Task 1: Sales by Date by Hour
+
+In this section we'll build a table of sales by date by hour and plot the 
+sales by hour of the day by month. Exclude card_no 3. I've written the plotting code for you
+to help you learn ggplot. 
+
+```{r get-task-1-data, message=F}
+con <- dbConnect(
+  bigrquery::bigquery(),
+  project = "umt-msba",
+  dataset = "transactions"
+  )
+
+# Create your data table `d` here. 
+
+
+```
+
+Our data table has `r nrow(d)` rows and `r ncol(d)` columns. Now let's 
+plot the sales by hour of the day for each of the years in the 
+data.
+
+```{r task-1-plot, warning=F, echo=T, message=F}
+d %>% 
+  mutate(year=year(date)) %>% 
+  group_by(year,hour) %>% 
+  summarize(sales = sum(sales)) %>% 
+  filter(year != 2017) %>% 
+  ggplot(aes(x=hour,y=sales)) + 
+  geom_line() + 
+  facet_wrap(~year) + 
+  theme_minimal() + 
+  labs(x="Hour",y="Sales",
+       title="Sales by Hour of the Day across Years") + 
+  scale_x_continuous(limits=c(8,20)) + 
+  scale_y_continuous(label=dollar)
+
+
+
+```
+
+What features of the data stand out to you? 
+
+<!-- Your commentary here --> 
+
+## Task 2: Sales by Owner, Year, and Month
+
+In this section we'll build a table of sales by owner, year, and month. 
+Again, we'll make a plot of it and again let's exclude card number 3.
+
+```{r get-task-2-data,echo=F, message=F}
+
+# Create your data table `d` here. 
+
+```
+
+Our data table has `r nrow(d)` rows and `r ncol(d)` columns. Now let's 
+plot the distribution of sales by card by year. Since this distribution is
+highly right skewed, we'll plot it on a log scale. 
+
+
+```{r task-2-plot, echo=T, warning=F,message=F}
+d %>% 
+  group_by(card_no,year) %>% 
+  summarize(sales = sum(sales)) %>% 
+  ungroup() %>% 
+  slice_sample(prop=0.03) %>%  # Don't need all the data for density
+  ggplot(aes(x=sales)) + 
+  geom_density() + 
+  facet_wrap(~year) + 
+  theme_minimal() + 
+  labs(x="Sales (Log)",y="",
+       title="Distribution of Sales by Owner by Year") + 
+  scale_x_log10(label=dollar)
+
+
+```
+
+What features of the data stand out to you? 
+
+<!-- Your commentary here --> 
+
+
+## Task 3: Sales by Product, Year, Month
+
+Warning, the product-year-month table is pretty large. This section may 
+be tough on your computer if your machine is RAM-challenged. To avoid trouble, 
+I'd encourage you to try to limit your query to the top 100 products (in terms
+of sales), since that's all we'll need for the plot. This will require you to 
+do two queries against the data tables and this is what I'll  
+in my solution. 
+
+```{r get-task-3-data,echo=T}
+# First, let's get the top 100 product descriptions. 
+top.prods <- con %>% 
+  tbl("*") %>% 
+  filter(is.na(trans_status) | 
+           trans_status %in% c(" ","V","R"),
+         !(department %in% c(0,15)),
+         card_no != 3) %>% 
+  group_by(description) %>% 
+  summarize(sales = sum(total,na.rm=T)) %>% 
+  ungroup %>% 
+  arrange(desc(sales)) %>% 
+  head(n=100) %>% 
+  collect()
+
+# Now let's pull sales by year and month for these products
+d <- con %>% 
+  tbl("*") %>% 
+  filter(is.na(trans_status) | 
+           trans_status %in% c(" ","V","R"),
+         !(department %in% c(0,15)),
+         card_no != 3) %>% 
+  filter(description %in% !!top.prods$description) %>% 
+  select(description,datetime,total) %>% 
+  mutate(year=year(datetime),
+         month=month(datetime)) %>% 
+  group_by(description,year,month) %>% 
+  summarize(sales=sum(total,na.rm=T)) %>% 
+  ungroup() %>% 
+  collect()
+
+  
+```
+You may notice that organic bananas are in the data under two different names. It's annoying,
+but let's not worry about fixing that right now.
+
+
+Our data table has `r nrow(d)` rows and `r ncol(d)` columns. Now let's 
+plot the sales by month for just the top 10 products
+
+```{r task-3-plot, echo=T}
+top.ten <- head(top.prods$description,n=10)
+
+d %>% 
+  filter(description %in% top.ten) %>% 
+  group_by(description, month) %>% 
+  summarize(sales = sum(sales, na.rm=T)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=month,y=sales)) + 
+  geom_line() + 
+  facet_wrap(~description) + 
+  theme_minimal() + 
+  labs(x="Month",y="Sales",
+       title="Top 10 Products: Sales by Month") + 
+  scale_x_continuous() + 
+  scale_y_continuous(label=dollar)
+
+
+```
+
+What features of the data stand out to you? 
+
+<!-- Your commentary here --> 
+
+
+
+## How to Query a Set of Tables
+
+Typically in `dplyr` we write queries sort of like this: 
+```{r star-example,echo=T,eval=F}
+con <- dbConnect(
+  bigrquery::bigquery(),
+  project = "umt-msba",
+  dataset = "transactions"
+  )
+
+trans.table <- tbl(con, "transArchive_201001_201003")
+
+trans.table %>% 
+  group_by(card_no) %>% 
+  summarize(num_rows = n()) %>% 
+  collect()
+
+```
+
+To query *all* the tables in the data set, you can chain the connection and 
+table lines together with the pipe:
+
+```{r star-example-2,echo=T,eval=F}
+con <- dbConnect(
+  bigrquery::bigquery(),
+  project = "umt-msba",
+  dataset = "transactions"
+  )
+
+con %>% 
+  tbl("*") %>% 
+  group_by(card_no) %>% 
+  summarize(num_rows = n()) %>% 
+  collect()
+
+```
+
